@@ -1,5 +1,5 @@
 # ip2location-php
-A PHP class library for importing IP2Location data
+A PHP class library for importing IP2Location data. A sample driver (updateIP2Location.php) is included.
 
 # Overview
 This is a class library that can be used with a simple driver to update a MySQL database with the monthly updates of DB5 from IP2Location's no cost service (https://lite.ip2location.com/).  Once imported, the data can easily be referenced to provide latitude/longitude/city/country data to visualize network activity (like with Smashing).  The library includes functions to allow you to setup the database, download new data, stage it, activate it, and roll it back if necessary.
