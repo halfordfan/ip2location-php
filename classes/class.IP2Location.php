@@ -24,7 +24,9 @@ class IP2Location {
     $pkg2csv=array("DB5LITE"      => "IP2LOCATION-LITE-DB5.CSV",
                    "DB5LITEIPV6"  => "IP2LOCATION-LITE-DB5.IPV6.CSV",
                    "PX11LITE"     => "IP2PROXY-LITE-PX11.CSV",
-                   "PX11LITEIPV6" => "IP2PROXY-LITE-PX11.IPV6.CSV");
+                   "PX11LITEIPV6" => "IP2PROXY-LITE-PX11.IPV6.CSV",
+                   "DBASNLITE"     => "IP2LOCATION-LITE-ASN.CSV",
+                   "DBASNLITEIPV6" => "IP2LOCATION-LITE-ASN.IPV6.CSV");
     $this->csvfile=$pkg2csv[$this->pkgname];
     // Warn of artifacts.
     if ( file_exists("/tmp/" . $this->pkgname . ".ZIP") ) {
@@ -609,6 +611,158 @@ class IP2Proxy11v6 extends IP2Location {
       $this->debug && print "DEBUG: Deleted " . $this->dbconn->affected_rows . " rows." . PHP_EOL;
       return $this->dbconn->affected_rows;
     }
+  }
+}
+
+class IP2ASNv4 extends IP2Location {
+
+  public function __construct($token, $db) {
+    $this->pkgname="DBASNLITE";
+    parent::__construct($token, $db);
+  }
+
+  public function createTableSet() {
+    foreach ( array("_stage", "_current", "_backup") as $suffix ) {
+      $this->dbconn->query("CREATE TABLE `" . $this->pkgname . $suffix . "` (
+        `begin` int unsigned NOT NULL,
+        `end` int unsigned NOT NULL,
+        `cidr` VARCHAR(43) NOT NULL,
+        `asn` VARCHAR(10) NOT NULL,
+        `asname` VARCHAR(256) NOT NULL,
+        `begin_vb` VARBINARY(4) NOT NULL,
+        `end_vb` VARBINARY(4) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+      $this->dbconn->query("ALTER TABLE `" . $this->pkgname . $suffix . "`
+        ADD PRIMARY KEY (`begin`,`end`),
+        ADD UNIQUE KEY (`begin_vb`,`end_vb`)");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+      $this->dbconn->query("CREATE TRIGGER `trigger_bi_" . $this->pkgname . $suffix . "_calcVB` BEFORE INSERT ON `" . $this->pkgname . $suffix . "` FOR EACH ROW" . "
+"                        . "BEGIN" . "
+"                        . " SET NEW.begin_vb=UNHEX(LPAD(HEX(NEW.begin), 8, '0'));" . "
+"                        . " SET NEW.end_vb=UNHEX(LPAD(HEX(NEW.end), 8, '0'));" . "
+"                        . "END");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+    }
+  }
+
+  // This is our import function.
+  public function loadCSV() {
+    $this->debug && print "DEBUG: Loading CSV " . $this->csvfile . " into database...";
+    $this->dbconn->query("TRUNCATE TABLE `" . $this->pkgname . "_stage`");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $this->dbconn->query("LOAD DATA LOCAL INFILE '" . '/tmp/' . $this->csvfile . "' INTO TABLE `" . $this->pkgname . "_stage` FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\r\n' (begin, end, cidr, asn, asname)");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $importout = $this->dbconn->info;
+    $this->debug > 1 && $warnset=$this->dbconn->query("SHOW WARNINGS");
+    if ( isset($warnset) ) {
+      while ( $row=mysqli_fetch_assoc($warnset) ) {
+        print "DEBUG: " . $row['Level'] . ": " . $row['Message'] . PHP_EOL;
+      }
+    }
+    $this->debug && print $importout . PHP_EOL;
+    $filedate=date('Y-m-d', filemtime("/tmp/" . $this->csvfile));
+    $this->dbconn->query("INSERT INTO releasedates (tablename, releasedate) VALUES ('" . $this->pkgname . "_stage','$filedate') ON DUPLICATE KEY UPDATE releasedate = '$filedate'");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $results=explode('  ',strtolower($importout));
+    foreach ( $results as $result ) {
+      $keyvalue=explode(': ',$result);
+      $import[$keyvalue[0]]=$keyvalue[1];
+    }
+    return $import;
+  }
+}
+
+class IP2ASNv6 extends IP2Location {
+
+  public function __construct($token, $db) {
+    $this->pkgname="DBASNLITEIPV6";
+    parent::__construct($token, $db);
+  }
+
+  public function createTableSet() {
+    foreach ( array("_stage", "_current", "_backup") as $suffix ) {
+      $this->dbconn->query("CREATE TABLE `" . $this->pkgname . $suffix . "` (
+        `begin` DECIMAL(60,0) UNSIGNED NOT NULL,
+        `end` DECIMAL(60,0) UNSIGNED NOT NULL,
+        `cidr` VARCHAR(43) NOT NULL,
+        `asn` VARCHAR(10) NOT NULL,
+        `asname` VARCHAR(256) NOT NULL,
+        `begin_vb` VARBINARY(16) NOT NULL,
+        `end_vb` VARBINARY(16) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+      $this->dbconn->query("ALTER TABLE `" . $this->pkgname . $suffix . "`
+        ADD PRIMARY KEY (`begin`,`end`),
+        ADD UNIQUE KEY (`begin_vb`,`end_vb`)");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+      $this->dbconn->query("CREATE TRIGGER `trigger_bi_" . $this->pkgname . $suffix . "_calcVB` BEFORE INSERT ON `" . $this->pkgname . $suffix . "` FOR EACH ROW" . "
+"                        . "BEGIN" . "
+"                        . " DECLARE TwoExp64 DECIMAL(20) UNSIGNED;" . "
+"                        . " DECLARE HighPart_b BIGINT UNSIGNED;" . "
+"                        . " DECLARE HighPart_e BIGINT UNSIGNED;" . "
+"                        . " DECLARE LowPart_b BIGINT UNSIGNED;" . "
+"                        . " DECLARE LowPart_e BIGINT UNSIGNED;" . "
+"                        . " SET TwoExp64 = 18446744073709551616;" . "
+"                        . " SET HighPart_b = NEW.begin DIV TwoExp64;" . "
+"                        . " SET LowPart_b = NEW.begin MOD TwoExp64;" . "
+"                        . " SET HighPart_e = NEW.end DIV TwoExp64;" . "
+"                        . " SET LowPart_e = NEW.end MOD TwoExp64;" . "
+"                        . " SET NEW.begin_vb=UNHEX(CONCAT(LPAD(HEX(HighPart_b), 16, '0'), LPAD(HEX(LowPart_b), 16, '0')));" . "
+"                        . " SET NEW.end_vb=UNHEX(CONCAT(LPAD(HEX(HighPart_e), 16, '0'), LPAD(HEX(LowPart_e), 16, '0')));" . "
+"                        . "END");
+      if ( $error = $this->dbconn->error ) {
+        throw new Exception ($error);
+      }
+    }
+  }
+
+  // This is our import function.
+  public function loadCSV() {
+    $this->debug && print "DEBUG: Loading CSV " . $this->csvfile . " into database...";
+    $this->dbconn->query("TRUNCATE TABLE `" . $this->pkgname . "_stage`");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $this->dbconn->query("LOAD DATA LOCAL INFILE '" . '/tmp/' . $this->csvfile . "' INTO TABLE `" . $this->pkgname . "_stage` FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\r\n' (begin, end, cidr, asn, asname)");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $importout = $this->dbconn->info;
+    $this->debug > 1 && $warnset=$this->dbconn->query("SHOW WARNINGS");
+    if ( isset($warnset) ) {
+      while ( $row=mysqli_fetch_assoc($warnset) ) {
+        print "DEBUG: " . $row['Level'] . ": " . $row['Message'] . PHP_EOL;
+      }
+    }
+    $this->debug && print $importout . PHP_EOL;
+    $filedate=date('Y-m-d', filemtime("/tmp/" . $this->csvfile));
+    $this->dbconn->query("INSERT INTO releasedates (tablename, releasedate) VALUES ('" . $this->pkgname . "_stage','$filedate') ON DUPLICATE KEY UPDATE releasedate = '$filedate'");
+    if ( $error = $this->dbconn->error ) {
+      throw new Exception($error);
+    }
+    $results=explode('  ',strtolower($importout));
+    foreach ( $results as $result ) {
+      $keyvalue=explode(': ',$result);
+      $import[$keyvalue[0]]=$keyvalue[1];
+    }
+    return $import;
   }
 }
 ?>

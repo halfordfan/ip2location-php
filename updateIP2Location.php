@@ -36,6 +36,8 @@ while ( $arg = array_shift($argv) ) {
       $ip2lv6=new IP2Location5v6('', $db);
       $ip2pv4=new IP2Proxy11v4('', $db);
       $ip2pv6=new IP2Proxy11v6('', $db);
+      $ip2av4=new IP2ASNv4('', $db);
+      $ip2av6=new IP2ASNv6('', $db);
 
       // See if we need to create a user and call setup correctly.
       if ( $createdbuser ) {
@@ -43,6 +45,8 @@ while ( $arg = array_shift($argv) ) {
         $ip2lv6->createDBUser($importuserspec);
         $ip2pv4->createDBUser($importuserspec);
         $ip2pv6->createDBUser($importuserspec);
+        $ip2av4->createDBUser($importuserspec);
+        $ip2av6->createDBUser($importuserspec);
       } 
 
       // Now create the tablesets.
@@ -50,6 +54,8 @@ while ( $arg = array_shift($argv) ) {
       $ip2lv6->createTableSet();
       $ip2pv4->createTableSet();
       $ip2pv6->createTableSet();
+      $ip2av4->createTableSet();
+      $ip2av6->createTableSet();
 
       // Clean up
       $db->close();
@@ -79,12 +85,16 @@ $ip2lv4=new IP2Location5v4($ip2lapikey,$db);
 $ip2lv6=new IP2Location5v6($ip2lapikey,$db);
 $ip2pv4=new IP2Proxy11v4($ip2lapikey,$db);
 $ip2pv6=new IP2Proxy11v6($ip2lapikey,$db);
+$ip2av4=new IP2ASNv4($ip2lapikey,$db);
+$ip2av6=new IP2ASNv6($ip2lapikey,$db);
 
 // Turn on debug to see output.
 $ip2lv4->setDebugLevel($debug);
 $ip2lv6->setDebugLevel($debug);
 $ip2pv4->setDebugLevel($debug);
 $ip2pv6->setDebugLevel($debug);
+$ip2av4->setDebugLevel($debug);
+$ip2av6->setDebugLevel($debug);
 
 switch ( $operation ) {
   case "restore":
@@ -93,12 +103,12 @@ switch ( $operation ) {
       $ip2lv6->restoreBackup();
       $ip2pv4->restoreBackup();
       $ip2pv6->restoreBackup();
-      /*
+      $ip2av4->restoreBackup();
+      $ip2av6->restoreBackup();
     } catch (exception $e) {
       print "Unable to restore previous backup table in one or more packages." . PHP_EOL;
       exit(1);
     }
-    */
   break;
   case "rowcount":
     $pkg['DB5LITE']=$ip2lv4->getRowcounts();
@@ -118,19 +128,25 @@ switch ( $operation ) {
       $ip2lv6->download();
       $ip2pv4->download();
       $ip2pv6->download();
-    }
+      $ip2av4->download();
+      $ip2av6->download();
+}
 
     // Extract the CSV
     $ip2lv4->extract();
     $ip2lv6->extract();
     $ip2pv4->extract();
     $ip2pv6->extract();
-    
+    $ip2av4->extract();
+    $ip2av6->extract();
+
     // Import it into the newip2location5 table
     $loadouts[]=$ip2lv4->loadCSV();
     $loadouts[]=$ip2lv6->loadCSV();
     $loadouts[]=$ip2pv4->loadCSV();
     $loadouts[]=$ip2pv6->loadCSV();
+    $loadouts[]=$ip2av4->loadCSV();
+    $loadouts[]=$ip2av6->loadCSV();
 
     foreach ( $loadouts as $loadout ) {
       // If the imported rows matches the rows in the table and no warnings, activate.
@@ -155,6 +171,8 @@ switch ( $operation ) {
     $ip2lv6->activateStage();
     $ip2pv4->activateStage();
     $ip2pv6->activateStage();
+    $ip2av4->activateStage();
+    $ip2av6->activateStage();
     break;
   default:
     print "One argument of [update|restore|rowcount] required." . PHP_EOL;
