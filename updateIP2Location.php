@@ -98,7 +98,7 @@ $ip2av6->setDebugLevel($debug);
 
 switch ( $operation ) {
   case "restore":
-  //  try {
+    try {
       $ip2lv4->restoreBackup();
       $ip2lv6->restoreBackup();
       $ip2pv4->restoreBackup();
